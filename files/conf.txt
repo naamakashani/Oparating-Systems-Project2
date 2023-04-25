@@ -1,0 +1,3 @@
+/home/naama/ex2-os/ex22/students
+/home/naama/ex2-os/ex22/io/input.txt
+/home/naama/ex2-os/ex22/io/correct_output.txt
