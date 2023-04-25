@@ -1,0 +1,4 @@
+/home/naama/ex2-os/ex22/students/Compilation_Error_gets_10/error1.c: In function ‘main’:
+/home/naama/ex2-os/ex22/students/Compilation_Error_gets_10/error1.c:4:5: error: expected declaration or statement at end of input
+    4 |     printf("dfg");
+      |     ^~~~~~
