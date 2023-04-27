@@ -38,19 +38,16 @@ void extract_input(char *path, char lines[3][150]) {
     }
 
     int close1 = close(fd);
-    if (close1 == -1) {
-        write(STDOUT_FILENO, "Error in: close", strlen("Error in: close"));
-    }
 
 
 }
 
-int count_c_file(DIR *subdir_dir, char *file_to_compile) {
+int count_c_file(int error_fd, DIR *subdir_dir, char *file_to_compile) {
     char *closedir_error = "Error in: closedir\n";
     int count = 0;
     char *opendir_error = "Error in: opendir\n";
     if (subdir_dir == NULL) {
-        write(STDOUT_FILENO, opendir_error, strlen(opendir_error));
+        write(error_fd, opendir_error, strlen(opendir_error));
         return -1;
     }
     struct dirent *subdir_entry;
@@ -74,41 +71,41 @@ int compile_c_file(int error_fd, char *file_to_compile) {
     char *execlp_error = "Error in: execlp\n";
     dup2(error_fd, 2);
     execlp("gcc", "gcc", file_to_compile, "-o", "a.out", (char *) NULL);
-    write(STDOUT_FILENO, execlp_error, strlen(execlp_error));
+    write(error_fd, execlp_error, strlen(execlp_error));
     exit(-1);
 
 }
 
-int create_output_file(char *output_file, char *new_path) {
+int create_output_file(int error_fd, char *output_file, char *new_path) {
     char *open_error = "Error in: open\n";
     strcat(output_file, new_path);
     strcat(output_file, "/output_file.txt");
     int output_fd;
     if ((output_fd = open(output_file, O_CREAT | O_TRUNC | O_WRONLY, 0644)) < 0) {
-        write(STDOUT_FILENO, open_error, strlen(open_error));
+        write(error_fd, open_error, strlen(open_error));
     }
     return output_fd;
 }
 
-void run_c_file(int input_fd, int output_fd) {
+void run_c_file(int error_fd, int input_fd, int output_fd) {
     char *execlp_error = "Error in: execlp\n";
     dup2(input_fd, STDIN_FILENO);
     dup2(output_fd, STDOUT_FILENO);
     execlp("./a.out", "a.out", NULL);
-    write(STDOUT_FILENO, execlp_error, strlen(execlp_error));
+    write(error_fd, execlp_error, strlen(execlp_error));
 }
 
-void run_compare(char *home_path, char *output_file, char *expected_output) {
+void run_compare(int error_fd, char *home_path, char *output_file, char *expected_output) {
     char *execvp_error = "Error in: execvp\n";
     char *chdir_error = "Error in: chdir\n";
     char *args[] = {"./comp.out", output_file, expected_output,
                     NULL};
     if (chdir(home_path) == -1) {
-        write(STDOUT_FILENO, chdir_error, strlen(chdir_error));
+        write(error_fd, chdir_error, strlen(chdir_error));
         exit(-1);
     }
     execvp(args[0], args);
-    write(STDOUT_FILENO, execvp_error, strlen(execvp_error));
+    write(error_fd, execvp_error, strlen(execvp_error));
 
 }
 
@@ -136,17 +133,17 @@ void open_files(char *path, int *fd) {
     char *chdir_error = "Error in: chdir\n";
     int len_open_error = strlen(open_error);
     int result = open("results.csv", O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    if (result < 0) {
-        write(STDOUT_FILENO, open_error, len_open_error);
-        exit(-1);
-    }
     int error_fd = open("error_file.txt", O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (error_fd < 0) {
-        write(STDOUT_FILENO, open_error, len_open_error);
         exit(-1);
     }
+    if (result < 0) {
+        write(error_fd, open_error, len_open_error);
+        exit(-1);
+    }
+
     if (chdir(path) == -1) {
-        write(STDOUT_FILENO, chdir_error, strlen(chdir_error));
+        write(error_fd, chdir_error, strlen(chdir_error));
         exit(-1);
     }
     fd[0] = result;
@@ -161,46 +158,46 @@ void remove_files() {
 
 }
 
-void new_iteration(char *path) {
+void new_iteration(int error_fd, char *path) {
     char *chdir_error = "Error in: chdir\n";
 
     remove_files();
     if (chdir(path) == -1) {
-        write(STDOUT_FILENO, chdir_error, strlen(chdir_error));
+        write(error_fd, chdir_error, strlen(chdir_error));
         exit(-1);
     }
 }
 
-void close_all(DIR *dir, int fd1, int fd2) {
+void close_all( DIR *dir, int fd1, int fd2) {
     char *closedir_error = "Error in: closedir\n";
     int close_dir = closedir(dir);
     if (close_dir == -1) {
-        write(STDOUT_FILENO, closedir_error, strlen(closedir_error));
+        write(fd2, closedir_error, strlen(closedir_error));
         exit(-1);
 
     }
     int close1 = close(fd1);
-    int close2 = close(fd2);
+
     if (close1 == -1) {
-        write(STDOUT_FILENO, "Error in: close", strlen("Error in: close"));
+        write(fd2, "Error in: close", strlen("Error in: close"));
         exit(-1);
     }
-    if (close2 == -1) {
-        write(STDOUT_FILENO, "Error in: close", strlen("Error in: close"));
-        exit(-1);
-    }
+    int close2 = close(fd2);
+
 }
 
 void compile_and_run_files(char *path, char *input_file, char *expected_output) {
+
     char home_path[1024];
-    if (getcwd(home_path, sizeof(home_path)) == NULL) {
-        write(STDOUT_FILENO, "Error in: getcwd", strlen("Error in: getcwd"));
+    char * cwd= getcwd(home_path, sizeof(home_path));
+    int fds[2];
+    open_files(path, fds);
+    if (cwd == NULL) {
+        write(fds[1], "Error in: getcwd", strlen("Error in: getcwd"));
         exit(-1);
     }
     struct dirent *entry;
     int status;
-    int fds[2];
-    open_files(path, fds);
     char *open_error = "Error in: open\n";
     char *fork_error = "Error in: fork\n";
     char *chdir_error = "Error in: chdir\n";
@@ -210,12 +207,12 @@ void compile_and_run_files(char *path, char *input_file, char *expected_output) 
     DIR *dir;
     dir = opendir(path);
     if (dir == NULL) {
-        write(STDOUT_FILENO, opendir_error, strlen(opendir_error));
+        write(fds[1], opendir_error, strlen(opendir_error));
         exit(-1);
     }
     DIR *fix_dir = opendir(path);
     if (dir == NULL) {
-        write(STDOUT_FILENO, opendir_error, strlen(opendir_error));
+        write(fds[1], opendir_error, strlen(opendir_error));
         exit(-1);
     }
 
@@ -227,21 +224,21 @@ void compile_and_run_files(char *path, char *input_file, char *expected_output) 
             strcat(new_path, "/");
             strcat(new_path, name);
             if (chdir(new_path) == -1) {
-                write(STDOUT_FILENO, chdir_error, strlen(chdir_error));
-                new_iteration(path);
+                write(fds[1], chdir_error, strlen(chdir_error));
+                new_iteration(fds[1],path);
                 continue;
             }
             char file_to_compile[1024] = "";
             strcpy(file_to_compile, new_path);
             DIR *subdir_dir = opendir(".");
             if (subdir_dir == NULL) {
-                write(STDOUT_FILENO, opendir_error, strlen(opendir_error));
-                new_iteration(path);
+                write(fds[1], opendir_error, strlen(opendir_error));
+                new_iteration(fds[1],path);
                 continue;
             }
-            int count = count_c_file(subdir_dir, file_to_compile);
+            int count = count_c_file(fds[1], subdir_dir, file_to_compile);
             if (count < 0) {
-                new_iteration(path);
+                new_iteration(fds[1],path);
                 continue;
             }
             if (count == 0) {
@@ -250,12 +247,12 @@ void compile_and_run_files(char *path, char *input_file, char *expected_output) 
             } else {
                 pid_t first_pid = fork();
                 if (first_pid == -1) {
-                    write(STDOUT_FILENO, fork_error, len_open_error);
-                    new_iteration(path);
+                    write(fds[1], fork_error, len_open_error);
+                    new_iteration(fds[1],path);
                     continue;
                 } else if (first_pid == 0) {
                     int compile = compile_c_file(fds[1], file_to_compile);
-                    new_iteration(path);
+                    new_iteration(fds[1],path);
                     continue;
                 } else { // parent process
                     waitpid(first_pid, &status, 0);
@@ -268,40 +265,37 @@ void compile_and_run_files(char *path, char *input_file, char *expected_output) 
                         while (strcmp(fix_entry->d_name, newname) != 0) {
                             fix_entry = readdir(fix_dir);
                         }
-                        fix_entry = readdir(fix_dir);
                         dir = fix_dir;
-                        entry = fix_entry;
-
-
+                        
                     } else {
                         char output_file[1024] = "";
-                        int output_fd = create_output_file(output_file, new_path);
+                        int output_fd = create_output_file(fds[1],output_file, new_path);
                         if (output_fd < 0) {
-                            new_iteration(path);
+                            new_iteration(fds[1],path);
                             continue;
 
                         }
                         int input_fd = open(input_file, O_RDONLY);
                         if (input_fd < 0) {
-                            write(STDOUT_FILENO, open_error, len_open_error);
-                            new_iteration(path);
+                            write(fds[1], open_error, len_open_error);
+                            new_iteration(fds[1],path);
                             continue;
                         }
                         pid_t second_pid = fork();
                         if (second_pid == -1) {
-                            write(STDOUT_FILENO, fork_error, len_open_error);
-                            new_iteration(path);
+                            write(fds[1], fork_error, len_open_error);
+                            new_iteration(fds[1],path);
                             continue;
                         } else if (second_pid == 0) {
-                            run_c_file(input_fd, output_fd);
-                            new_iteration(path);
+                            run_c_file(fds[1],input_fd, output_fd);
+                            new_iteration(fds[1],path);
                             continue;
                         } else {
                             int close1 = close(input_fd);
                             int close2 = close(output_fd);
                             if (close1 == -1 || close2 == -1) {
-                                write(STDOUT_FILENO, "Error in: close", strlen("Error in: close"));
-                                new_iteration(path);
+                                write(fds[1], "Error in: close", strlen("Error in: close"));
+                                new_iteration(fds[1],path);
                                 continue;
                             }
                             sleep(5);
@@ -312,12 +306,12 @@ void compile_and_run_files(char *path, char *input_file, char *expected_output) 
                             } else {
                                 pid_t third_pid = fork();
                                 if (third_pid == -1) {
-                                    write(STDOUT_FILENO, fork_error, len_open_error);
-                                    new_iteration(path);
+                                    write(fds[1], fork_error, len_open_error);
+                                    new_iteration(fds[1],path);
                                     continue;
                                 } else if (third_pid == 0) {
-                                    run_compare(home_path, output_file, expected_output);
-                                    new_iteration(path);
+                                    run_compare(fds[1],home_path, output_file, expected_output);
+                                    new_iteration(fds[1],path);
                                     continue;
                                 } else {
                                     waitpid(third_pid, &status, 0);
@@ -330,10 +324,10 @@ void compile_and_run_files(char *path, char *input_file, char *expected_output) 
             }
             int close_subdir = closedir(subdir_dir);
             if (close_subdir == -1) {
-                write(STDOUT_FILENO, closedir_error, strlen(closedir_error));
+                write(fds[1], closedir_error, strlen(closedir_error));
 
             }
-            new_iteration(path);
+            new_iteration(fds[1],path);
         }
     }
     close_all(dir, fds[0], fds[1]);
