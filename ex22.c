@@ -128,9 +128,8 @@ void write_result(int result, int num, char *name) {
     }
 }
 
-void open_files(char *path, int *fd) {
+void open_files(int *fd) {
     char *open_error = "Error in: open\n";
-    char *chdir_error = "Error in: chdir\n";
     int len_open_error = strlen(open_error);
     int result = open("results.csv", O_WRONLY | O_CREAT | O_TRUNC, 0644);
     int error_fd = open("error_file.txt", O_WRONLY | O_CREAT | O_TRUNC, 0644);
@@ -142,10 +141,6 @@ void open_files(char *path, int *fd) {
         exit(-1);
     }
 
-    if (chdir(path) == -1) {
-        write(error_fd, chdir_error, strlen(chdir_error));
-        exit(-1);
-    }
     fd[0] = result;
     fd[1] = error_fd;
 
@@ -185,17 +180,13 @@ void close_all( DIR *dir, int fd1, int fd2) {
     int close2 = close(fd2);
 
 }
+void add_path(char* new_path, char * path, char*name){
+    strcat(new_path, path);
+    strcat(new_path, "/");
+    strcat(new_path, name);
+}
 
-void compile_and_run_files(char *path, char *input_file, char *expected_output) {
-
-    char home_path[1024];
-    char * cwd= getcwd(home_path, sizeof(home_path));
-    int fds[2];
-    open_files(path, fds);
-    if (cwd == NULL) {
-        write(fds[1], "Error in: getcwd", strlen("Error in: getcwd"));
-        exit(-1);
-    }
+void compile_and_run_files(char *path, char *input_file, char *expected_output,int* fds,char* home_path) {
     struct dirent *entry;
     int status;
     char *open_error = "Error in: open\n";
@@ -204,6 +195,10 @@ void compile_and_run_files(char *path, char *input_file, char *expected_output) 
     char *opendir_error = "Error in: opendir\n";
     char *closedir_error = "Error in: closedir\n";
     int len_open_error = strlen(open_error);
+    if (chdir(path) == -1) {
+        write(fds[1], chdir_error, strlen(chdir_error));
+        exit(-1);
+    }
     DIR *dir;
     dir = opendir(path);
     if (dir == NULL) {
@@ -217,12 +212,11 @@ void compile_and_run_files(char *path, char *input_file, char *expected_output) 
     }
 
     while ((entry = readdir(dir)) != NULL) {
+
         if (entry->d_type == DT_DIR && strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
             char *name = entry->d_name;
             char new_path[1024] = "";
-            strcat(new_path, path);
-            strcat(new_path, "/");
-            strcat(new_path, name);
+            add_path(new_path,path,name);
             if (chdir(new_path) == -1) {
                 write(fds[1], chdir_error, strlen(chdir_error));
                 new_iteration(fds[1],path);
@@ -266,7 +260,8 @@ void compile_and_run_files(char *path, char *input_file, char *expected_output) 
                             fix_entry = readdir(fix_dir);
                         }
                         dir = fix_dir;
-                        
+                        continue;
+
                     } else {
                         char output_file[1024] = "";
                         int output_fd = create_output_file(fds[1],output_file, new_path);
@@ -329,27 +324,41 @@ void compile_and_run_files(char *path, char *input_file, char *expected_output) 
             }
             new_iteration(fds[1],path);
         }
+        entry="";
     }
     close_all(dir, fds[0], fds[1]);
 }
 
 int main(int argc, char *argv[]) {
+    int fds[2];
+    open_files(fds);
     if (argc != 2) {
-        return 0;
+        exit -1;
     }
     char lines[3][150];
+    char home_path[1024];
+    char * cwd= getcwd(home_path, sizeof(home_path));
+    if (cwd == NULL) {
+        write(fds[1], "Error in: getcwd", strlen("Error in: getcwd"));
+        exit(-1);
+    }
+    char students[1024]="",input[1024]="",output[1024]="";
     extract_input(argv[1], lines);
-    if (access(lines[0], F_OK) != 0) {
+    add_path(students,home_path,lines[0]);
+    add_path(input,home_path,lines[1]);
+    add_path(output,home_path,lines[2]);
+
+    if (access(students, F_OK) != 0) {
         printf("Not a valid directory\n");
         return -1;
     }
-    if (access(lines[1], F_OK) != 0) {
+    if (access(input, F_OK) != 0) {
         printf("Input file not exist\n");
         return -1;
     }
-    if (access(lines[2], F_OK) != 0) {
+    if (access(output, F_OK) != 0) {
         printf("Output file not exist\n");
         return -1;
     }
-    compile_and_run_files(lines[0], lines[1], lines[2]);
+    compile_and_run_files(students,input,output,fds,home_path);
 }
