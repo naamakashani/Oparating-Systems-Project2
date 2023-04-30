@@ -132,7 +132,7 @@ void open_files(int *fd) {
     char *open_error = "Error in: open\n";
     int len_open_error = strlen(open_error);
     int result = open("results.csv", O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    int error_fd = open("error_file.txt", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    int error_fd = open("errors.txt", O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (error_fd < 0) {
         exit(-1);
     }
@@ -324,7 +324,7 @@ void compile_and_run_files(char *path, char *input_file, char *expected_output,i
             }
             new_iteration(fds[1],path);
         }
-        entry="";
+
     }
     close_all(dir, fds[0], fds[1]);
 }
