@@ -5,7 +5,8 @@
 #include <unistd.h>
 #include <string.h>
 
-int compress_file(const char *input_file, const char *output_file) {
+int compress_file(char *input_file, char *output_file) {
+
     int input_fd = open(input_file, O_RDONLY);
     int output_fd = open(output_file, O_WRONLY | O_TRUNC | O_CREAT, 0644);
     if (input_fd < 0 || output_fd < 0) {
@@ -15,7 +16,9 @@ int compress_file(const char *input_file, const char *output_file) {
     char c;
     int bytes_read;
     while (bytes_read = read(input_fd, &c, 1) > 0) {
-        if (!isspace(c) && c != '\n') {
+        if (c == ' ' || c == '\n' || c == '\t' || c == '\0' || c == '\r' || c == '\v' || c == '\f') {
+            continue;
+        } else {
             c = tolower(c);
             write(output_fd, &c, 1);
 
@@ -72,16 +75,16 @@ int check_identical(char *path_file1, char *path_file2) {
 }
 
 int check_similar(char *argv[]) {
-    const char *compressed_file1 = "output1";
-    const char *compressed_file2 = "output2";
+    char *compressed_file1 = "output1";
+    char *compressed_file2 = "output2";
 
     compress_file(argv[1], compressed_file1);
     compress_file(argv[2], compressed_file2);
 
     int result = check_identical(compressed_file1, compressed_file2);
-    int x=remove("output1");
-    int y=remove("output2");
-    if (x==-1 || y==-1){
+    int x = remove("output1");
+    int y = remove("output2");
+    if (x == -1 || y == -1) {
         write(STDOUT_FILENO, "Error in: remove", strlen("Error in: remove"));
         return -1;
     }
@@ -115,4 +118,3 @@ int main(int argc, char *argv[]) {
 
 
 }
-
