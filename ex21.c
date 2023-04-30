@@ -54,7 +54,7 @@ int check_identical(char *path_file1, char *path_file2) {
             write(STDOUT_FILENO, "Error in: read", strlen("Error in: read"));
             return -1;
         }
-        if (x1 == 0 && x1 == 0) {
+        if (x2 == 0 && x1 == 0) {
             int close1 = close(file1);
             int close2 = close(file2);
             if (close1 == -1 || close2 == -1) {
