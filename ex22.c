@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <dirent.h>
 #include <sys/wait.h>
+#include <signal.h>
 
 void close_all_fd(int fd1, int fd2) {
 
@@ -159,12 +160,19 @@ void write_result(int result, int num, char *name) {
             break;
     }
 }
-
-void open_files(int *fd) {
+void add_path(char *new_path, char *path, char *name) {
+    strcat(new_path, path);
+    strcat(new_path, "/");
+    strcat(new_path, name);
+}
+void open_files(int *fd,char* home_path) {
     char *open_error = "Error in: open\n";
     int len_open_error = strlen(open_error);
-    int result = open("results.csv", O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    int error_fd = open("errors.txt", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    char error_file[1024], result_file[1024];
+    add_path(error_file, home_path, "errors.txt");
+    add_path(result_file, home_path, "results.csv");
+    int result = open(result_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    int error_fd = open(error_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (error_fd < 0) {
         write(STDOUT_FILENO, open_error, len_open_error);
         exit(-1);
@@ -208,10 +216,17 @@ void new_iteration(char *path, int *fds, DIR *dir) {
 }
 
 
-void add_path(char *new_path, char *path, char *name) {
-    strcat(new_path, path);
-    strcat(new_path, "/");
-    strcat(new_path, name);
+
+
+void handle_alarm(int signum,pid_t pid,int* flag) {
+    kill(pid, SIGTERM);
+    flag[0]=1;
+
+}
+void handler(int sig) {
+    if(sig == SIGALRM) {
+        kill(getpid(), SIGTERM);
+    }
 }
 
 void compile_and_run_files(char *path, char *input_file, char *expected_output, int *fds, char *home_path) {
@@ -251,7 +266,7 @@ void compile_and_run_files(char *path, char *input_file, char *expected_output, 
             add_path(new_path, path, name);
             if (chdir(new_path) == -1) {
                 write(STDOUT_FILENO, chdir_error, strlen(chdir_error));
-                new_iteration(path,fds,dir);
+                new_iteration(path, fds, dir);
                 continue;
             }
             char file_to_compile[1024] = "";
@@ -260,13 +275,13 @@ void compile_and_run_files(char *path, char *input_file, char *expected_output, 
             if (subdir_dir == NULL) {
                 write(STDOUT_FILENO, opendir_error, strlen(opendir_error));
                 close_dir(subdir_dir);
-                new_iteration(path,fds,dir);
+                new_iteration(path, fds, dir);
                 continue;
             }
             int count = count_c_file(subdir_dir, file_to_compile);
             if (count < 0) {
                 close_dir(subdir_dir);
-                new_iteration(path,fds,dir);
+                new_iteration(path, fds, dir);
                 continue;
             }
             if (count == 0) {
@@ -277,12 +292,12 @@ void compile_and_run_files(char *path, char *input_file, char *expected_output, 
                 if (first_pid == -1) {
                     write(STDOUT_FILENO, fork_error, len_open_error);
                     close_dir(subdir_dir);
-                    new_iteration(path,fds,dir);
+                    new_iteration(path, fds, dir);
                     continue;
                 } else if (first_pid == 0) {
                     int compile = compile_c_file(file_to_compile, fds);
                     close_dir(subdir_dir);
-                    new_iteration(path,fds,dir);
+                    new_iteration(path, fds, dir);
                     continue;
                 } else { // parent process
                     waitpid(first_pid, &status, 0);
@@ -304,7 +319,7 @@ void compile_and_run_files(char *path, char *input_file, char *expected_output, 
                         int output_fd = create_output_file(output_file, new_path);
                         if (output_fd < 0) {
                             close_dir(subdir_dir);
-                            new_iteration(path,fds,dir);
+                            new_iteration(path, fds, dir);
                             continue;
 
                         }
@@ -312,19 +327,22 @@ void compile_and_run_files(char *path, char *input_file, char *expected_output, 
                         if (input_fd < 0) {
                             write(STDOUT_FILENO, open_error, len_open_error);
                             close_dir(subdir_dir);
-                            new_iteration(path,fds,dir);
+                            new_iteration(path, fds, dir);
                             continue;
                         }
+
+                        signal(SIGALRM, (void (*)(int))handle_alarm);
                         pid_t second_pid = fork();
                         if (second_pid == -1) {
                             write(STDOUT_FILENO, fork_error, len_open_error);
                             close_dir(subdir_dir);
-                            new_iteration(path,fds,dir);
+                            new_iteration(path, fds, dir);
                             continue;
                         } else if (second_pid == 0) {
+                            alarm(5);
                             run_c_file(input_fd, output_fd);
                             close_dir(subdir_dir);
-                            new_iteration(path,fds,dir);
+                            new_iteration(path, fds, dir);
                             continue;
                         } else {
                             int close1 = close(input_fd);
@@ -332,25 +350,31 @@ void compile_and_run_files(char *path, char *input_file, char *expected_output, 
                             if (close1 == -1 || close2 == -1) {
                                 write(STDOUT_FILENO, "Error in: close", strlen("Error in: close"));
                                 close_dir(subdir_dir);
-                                new_iteration(path,fds,dir);
+                                new_iteration(path, fds, dir);
                                 continue;
                             }
-                            sleep(5);
-                            if (waitpid(second_pid, &status, WNOHANG) <= 0) {
+
+                            waitpid(second_pid, &status, 0);
+                            alarm(0);
+
+                            if (!(WIFEXITED(status))) {
                                 strcat(name, ",20,TIMEOUT\n");
                                 write(fds[0], name, strlen(name));
+                                close_dir(subdir_dir);
+                                new_iteration(path, fds, dir);
+                                continue;
 
                             } else {
                                 pid_t third_pid = fork();
                                 if (third_pid == -1) {
                                     write(STDOUT_FILENO, fork_error, len_open_error);
                                     close_dir(subdir_dir);
-                                    new_iteration(path,fds,dir);
+                                    new_iteration(path, fds, dir);
                                     continue;
                                 } else if (third_pid == 0) {
                                     run_compare(home_path, output_file, expected_output, fds);
                                     close_dir(subdir_dir);
-                                    new_iteration(path,fds,dir);
+                                    new_iteration(path, fds, dir);
                                     continue;
                                 } else {
                                     waitpid(third_pid, &status, 0);
@@ -362,7 +386,7 @@ void compile_and_run_files(char *path, char *input_file, char *expected_output, 
                 }
             }
             close_dir(subdir_dir);
-            new_iteration(path,fds,dir);
+            new_iteration(path, fds, dir);
         }
 
     }
@@ -373,7 +397,7 @@ void compile_and_run_files(char *path, char *input_file, char *expected_output, 
 
 int main(int argc, char *argv[]) {
     int fds[2];
-    open_files(fds);
+
     if (argc != 2) {
         exit(-1);
     }
@@ -385,6 +409,7 @@ int main(int argc, char *argv[]) {
         close_all_fd(fds[0], fds[1]);
         exit(-1);
     }
+    open_files(fds,home_path);
     char students[1024] = "", input[1024] = "", output[1024] = "";
     extract_input(argv[1], lines, fds);
     if (lines[0][0] != '/') {
